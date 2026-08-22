@@ -1,18 +1,13 @@
 from api import MassiveAPI
 from decimal import Decimal
-class BaseEntity:
 
+class BaseEntity:
+	def __init__(entityID: int):
+		self.id = entityID
 
 class EntityReference:
 	def __init__(entityID: int):
 		self.id = entityID
-
-
-class SQLHandler:
-	def __init__():
-
-	def loadObjectByID(id: int) -> object:
-		#TODO: add base DB fetch
 
 
 class FundReference(EntityReference):
@@ -20,19 +15,28 @@ class FundReference(EntityReference):
 	Fields:
 		id
 		name
-		managerID
+		user_id
 	"""
-	def __init__(entityID: int, fund_name: str, manager_id: int):
-		self.id = entityID
-		self.name = fund_name
-		self.managerID = manager_id
+	def __init__(*, fund_id: int, name: str, user_id: int):
+		self.id = fund_id
+		self.name = name
+		self.user_id = user_id
 
-	def __init__(fund: Fund):
-		self.id = fund.getID()
-		self.name = fund.getName()
-		self.managerID = fund.getManagerID()
+class UserReference(EntityReference):
+	"""
+	Fields:
+		id
+		display_name
+	"""
+	def __init__(*,user_id: int, display_name: str):
+		self.id = user_id
+		self.display_name = display_name
 
-
+	@staticmethod
+	def byID(user_id: int):
+		from db_tools import DBHandler
+		out = DBHandler.getUserRef(user_id)
+		return UserReference(user_id=out["id"],display_name=out["display_name"])
 
 class League(BaseEntity):
 	"""
@@ -56,6 +60,21 @@ class League(BaseEntity):
 		self.period_end = period_end
 		self.period_start = period_start
 
+	def addUser(self, user_id: int):
+		"""
+		Add to leaguemembers SQL, create a default fund in league associated with user
+		"""
+		league_id = self.id
+		from db_tools import DBHandler
+		if not DBHandler.canAddUser(league_id):
+			raise ValueError("Too many users in League.")
+		start_money = DBHandler.getStartCash(league_id)
+		if not start_money:
+			raise ValueError("No Start Money Field")
+		Fund.addFund(user_id=user_id,league_id=league_id, start_cash=start_money)
+		DBHandler.addUserToLeagueMembers(user_id=user_id, league_id=league_id)
+		#TODO: finish this. initialize in fund in DB, then add user to league members
+		
 
 
 class Fund(BaseEntity):
@@ -69,7 +88,15 @@ class Fund(BaseEntity):
 		cash
 
 	"""
-	def __init__(self, *, league_id: int, user_id: int, fund_name: str, fund_id: int, cash: Decimal, logo_url: str)
+	def __init__(self, *, 
+			league_id: int, 
+			user_id: int, 
+			fund_name: str, 
+			fund_id: int, 
+			cash: Decimal, 
+			logo_url: str
+		):
+
 		self.id = fund_id
 		self.user_id = user_id
 		self.name = fund_name
@@ -79,6 +106,7 @@ class Fund(BaseEntity):
 
 
 	def save(self) -> None:
+		pass
 		#TODO: Implement DB persistence call here.
 
 
@@ -102,7 +130,8 @@ class Fund(BaseEntity):
 
 
 	@staticmethod
-	def loadFundByID(fund_id: int) -> Fund:
+	def loadFundByID(fund_id: int):
+		from db_tools import DBHandler
 		out = DBHandler.getFund(fund_id)
 		cash = out["cash"]
 		if isinstance(out["cash"], str):
@@ -223,8 +252,8 @@ class Fund(BaseEntity):
 
 	@staticmethod
 	def addFund(*, user_id: int, league_id: int, start_cash: Decimal, name: str="XYZ Fund", logo_url=""):
+		from db_tools import DBHandler
 		DBHandler.addFund(league_id=league_id,user_id=user_id, cash=start_cash,name=name, logo_url=logo_url)
-
 
 
 
@@ -242,7 +271,13 @@ class User(BaseEntity):
 		make separate helper that adds user row to table with set password hash and new userID
 		init object from DB to autofill ID
 	"""
-	def __init__(self, *, username: str, display_name: str, email_addr: str, user_id: int, is_active: int)
+	def __init__(self, *, 
+			username: str, 
+			display_name: str, 
+			email_addr: str, 
+			user_id: int, 
+			is_active: int
+		):
 		self.username = username
 		self.display_name = display_name
 		self.email = email_addr
@@ -258,7 +293,7 @@ class User(BaseEntity):
 			raise RuntimeError(f"Persistence Failure: Failed to save UserID: {self.getID()}")
 
 	@staticmethod
-	def loadUserByID(userID: str) -> User:
+	def loadUserByID(userID: str):
 		from db_tools import DBHandler
 		user_dict = DBHandler.getUser(userID)
 		if not user_dict:
@@ -269,8 +304,8 @@ class User(BaseEntity):
 			user_id = user_dict["id"],
 			is_active = user_dict["is_active"],
 			)
-	
-	def loadUserByEmail(email: str) -> User:
+
+	def loadUserByEmail(email: str):
 		from db_tools import DBHandler
 		user_dict = DBHandler.getUserByEmail(email)
 		if not user_dict:
@@ -297,7 +332,7 @@ class User(BaseEntity):
 	def isActive(self) -> bool:
 		return self.active
 
-	def addUserToLeague(self, league_id: int):
+	def addToLeague(self, league_id: int):
 		"""
 		Add to leaguemembers SQL, create a default fund in league associated with user
 		"""
@@ -305,12 +340,16 @@ class User(BaseEntity):
 		if not DBHandler.canAddUser(league_id):
 			raise ValueError("Too many users in League.")
 		start_money = DBHandler.getStartCash(league_id)
-		Fund.addFund(user_id=self.id,league_id=int, start_cash=start_money)
+		Fund.addFund(user_id=self.id,league_id=league_id, start_cash=start_money)
 		DBHandler.addUserToLeagueMembers(user_id=self.id, league_id=league_id)
 		#TODO: finish this. initialize in fund in DB, then add user to league members
 		
-
-
+	@staticmethod
+	def newUser(*, username: str, display_name: str, email: str, password: str, is_active: int=1):
+		from auth_helpers import hash_pw
+		from db_tools import DBHandler
+		password_hash = hash_pw(password)
+		DBHandler.addUser(username=username,display_name=display_name,email=email,password_hash=password_hash,is_active=is_active)
 
 
 

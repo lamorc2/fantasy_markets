@@ -23,4 +23,4 @@ Depending on the format of your league, each fund manager will get a set number 
 
 - ID/Reference for entities
 
-- DB: uhh what are DBs even good for SQL vs JSON vs BSON or whatever
+- DB: SQLite for local testing, PostgreSQL when up and running (hopefully)

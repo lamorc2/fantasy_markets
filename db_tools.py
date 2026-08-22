@@ -9,7 +9,7 @@ import os
 from decimal import Decimal
 from enums import Side
 DATABASE_URL = os.environ.get('DATABASE_URL')
-
+SQLITE_PATH = "fantasy_markets.db"
 if DATABASE_URL:
     import psycopg2
     import psycopg2.extras
@@ -79,38 +79,48 @@ class DBHandler:
 	def getPosition(*, fund_id: int, ticker: str) -> int:
 		conn = DBHandler.get_db()
 		sql = ''' SELECT shares FROM positions
-		WHERE id = ? AND ticker = ?
+		WHERE fund_id = ? AND ticker = ?
 		'''
-		params = tuple(fund_id,ticker)
+		params = (fund_id,ticker)
 		output = DBHandler.fetchone(conn,sql,params)
 		return output["shares"]
 		#return number of shares owned
 
 	@staticmethod
-	def getFund(fund_id: int) -> dict:
+	def getFund(fund_id: int):
 		conn = DBHandler.get_db()
-		sql = ''' SELECT * FROM users
+		sql = ''' SELECT * FROM funds
 		WHERE id = ?
 		'''
-		params = tuple(fund_id,)
+		params = (fund_id,)
 		return DBHandler.fetchone(conn,sql,params)
 
+
 	@staticmethod
-	def getUser(user_id: int) -> dict | None:
+	def getAllUsersByRef():
+		conn = DBHandler.get_db()
+		sql = ''' SELECT * FROM users
+			WHERE is_active = 1
+		'''
+		return DBHandler.fetchall(conn,sql)
+
+	@staticmethod
+	def getUser(user_id: int):
 		conn = DBHandler.get_db()
 		sql = ''' SELECT id, username, display_name, email, is_active FROM users
 		WHERE id = ?
 		'''
-		params = tuple(user_id,)
+		params = (user_id,)
 		return DBHandler.fetchone(conn,sql,params)
 
+
 	@staticmethod
-	def getUserByEmail(email: str) -> dict | None:
+	def getUserByEmail(email: str):
 		conn = DBHandler.get_db()
 		sql = ''' SELECT id, username, display_name, email, is_active FROM users
 		WHERE email = ?
 		'''
-		params = tuple(email,)
+		params = (email,)
 		return DBHandler.fetchone(conn,sql,params)
 
 	@staticmethod
@@ -119,7 +129,7 @@ class DBHandler:
 		sql = ''' SELECT * FROM leagues
 		WHERE id = ?
 		'''
-		params = tuple(league_id,)
+		params = (league_id,)
 		return DBHandler.fetchone(conn,sql,params)
 
 	@staticmethod
@@ -129,7 +139,7 @@ class DBHandler:
 		SET shares = ?
 		WHERE fund_id = ? AND ticker = ?
 		'''
-		params = tuple(shares,fund_id,ticker)
+		params = (shares,fund_id,ticker)
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 
@@ -147,10 +157,34 @@ class DBHandler:
 		conn = DBHandler.get_db()
 		sql = ''' INSERT INTO trades (fund_id, acted_by_user_id, ticker, side, shares, price, notional) VALUES (?,?,?,?,?,?,?)
 		'''
-		params = tuple(fund_id,user_id,ticker,side,shares,price,trade_value)
+		params = (fund_id,user_id,ticker,side,shares,price,trade_value)
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 
+	@staticmethod
+	def addUser(*, username: str, display_name: str, email: str, password_hash: str, is_active: int):
+		conn = DBHandler.get_db()
+		sql = ''' INSERT INTO users (username,display_name,email,password_hash,is_active) VALUES (?,?,?,?,?)
+		'''
+		params = (username,display_name,email,password_hash,is_active)
+		DBHandler.execute(conn,sql,params)
+		conn.commit()
+
+	@staticmethod
+	def addLeague(*,name: str, 
+			commissioner_id: int, 
+			mode: str='H2H', 
+			start_money: int, 
+			max_funds: int, 
+			period_start: str, 
+			period_end: str
+		):
+		conn = DBHandler.get_db()
+		sql = ''' INSERT INTO leagues (name,commissioner_id ,mode,start_money,max_funds, period_start, period_end) VALUES (?,?,?,?,?,?,?)
+		'''
+		params = (name,commissioner_id ,mode,start_money,max_funds, period_start, period_end)
+		DBHandler.execute(conn,sql,params)
+		conn.commit()
 
 	@staticmethod
 	def addFund(*,
@@ -161,9 +195,9 @@ class DBHandler:
 			cash: Decimal
 		):
 		conn = DBHandler.get_db()
-		sql = ''' INSERT INTO funds (league_id, user_id, name, logo_url, cash) VALUES (?,?,?,?,?,?)
+		sql = ''' INSERT INTO funds (league_id, user_id, name, logo_url, cash) VALUES (?,?,?,?,?)
 		'''
-		params = tuple(league_id,user_id,name,logo_url,cash)
+		params = (league_id,user_id,name,logo_url,cash)
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 
@@ -175,16 +209,16 @@ class DBHandler:
 			WHERE league_id = ?
 			'''
 
-		params = tuple(league_id,)
+		params = (league_id,)
 		out = DBHandler.fetchone(conn,sql,params)
 		num = out["n"]
 		sql2 = '''SELECT max_funds from leagues
-			WHERE league_id = ?
+			WHERE id = ?
 			'''
 		out2 = DBHandler.fetchone(conn,sql2,params)
 		if out2 == None:
 			raise ValueError(f"No League found for league_id: {league_id}")
-		_max = out["max_funds"]
+		_max = out2["max_funds"]
 		return _max > num
 
 
@@ -193,11 +227,11 @@ class DBHandler:
 	@staticmethod
 	def getStartCash(league_id:int) -> int:
 		conn = DBHandler.get_db()
-		sql = '''SELECT start_money
-			WHERE league_id = ?
+		sql = '''SELECT start_money FROM leagues
+			WHERE id = ?
 			'''
 
-		params = tuple(league_id,)
+		params = (league_id,)
 		out = DBHandler.fetchone(conn,sql,params)
 		return out["start_money"]
 
@@ -208,7 +242,7 @@ class DBHandler:
 		SET cash = ?
 		WHERE id = ?
 		'''
-		params = tuple(fund_id,new_wallet)
+		params = (new_wallet,fund_id)
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 		#just change wallet value in row
@@ -226,11 +260,11 @@ class DBHandler:
 		else:
 			active = 0
 		conn = DBHandler.get_db()
-		sql = ''' UPDATE positions
+		sql = ''' UPDATE users
 		SET email = ?, display_name = ?, username = ?, is_active = ?
 		WHERE id = ?
 		'''
-		params = tuple(email,display_name,username,active,userID)
+		params = (email,display_name,username,active,userID)
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 		#rewrite entire user row minus password hash
@@ -240,17 +274,25 @@ class DBHandler:
 		conn = DBHandler.get_db()
 		sql = ''' INSERT INTO league_members (user_id, league_id) VALUES (?, ?)
 		'''
-		params = tuple(user_id,league_id)
+		params = (user_id,league_id)
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 
+	@staticmethod
+	def getUserRef(user_id: int):
+		conn = DBHandler.get_db()
+		sql = ''' SELECT id,display_name FROM users
+			WHERE id = ?
+		'''
+		params = (user_id,)
+		return DBHandler.fetchone(conn,sql,params)
 
 	@staticmethod
 	def removeUserFromLeague(*,user_id: int, league_id: int) -> None:
 		conn = DBHandler.get_db()
 		sql = ''' DELETE FROM league_members WHERE user_id = ? AND league_id = ?
 		'''
-		params = tuple(user_id,league_id)
+		params = (user_id,league_id)
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 
@@ -261,16 +303,40 @@ class DBHandler:
 		sql = ''' SELECT * FROM funds 
 			WHERE user_id = ? AND league_id = ?
 		'''
-		params = tuple(user_id, league_id)
+		params = (user_id, league_id)
 		#handle fund creation outside of DB handlers
 		return DBHandler.fetchone(conn,sql,params)
 
+	@staticmethod
+	def getAllUserIDs():
+		conn = DBHandler.get_db()
+		if DATABASE_URL:
+			sql = ''' SELECT json_agg(id) FROM users
+				WHERE is_active = 1
+				'''
+		else: 
+			sql = ''' SELECT json_group_array(id) FROM users
+				WHERE is_active = 1
+				'''
+		out = DBHandler.fetchone(conn,sql,params)
+		return out["id"]
+
+	@staticmethod
+	def getAllUserRefs():
+		conn = DBHandler.get_db()
+	
+		sql = ''' SELECT id, display_name FROM users
+			WHERE is_active = 1
+			'''
+
+		return DBHandler.fetchall(conn,sql)
 
 	@staticmethod
 	def init_db():
 		conn = DBHandler.get_db()
 		DATABASE_URL = os.environ.get('DATABASE_URL')
 		# SQLite uses TEXT, PostgreSQL uses Decimal
+
 		if DATABASE_URL:
 			DBHandler.execute(conn, '''PRAGMA foreign_keys = ON''')
 			DBHandler.execute(conn, '''CREATE TABLE IF NOT EXISTS users (
@@ -302,7 +368,7 @@ class DBHandler:
 			    cash DECIMAL NOT NULL,
 			    FOREIGN KEY (league_id) REFERENCES leagues(id),
 			    FOREIGN KEY (user_id) REFERENCES users(id),
-			    UNIQUE (league_id, name)
+			    UNIQUE (league_id, user_id)
 				
 				)
 			''')
@@ -333,8 +399,8 @@ class DBHandler:
 			DBHandler.execute(conn, '''CREATE TABLE IF NOT EXISTS league_members (
 			    user_id INTEGER NOT NULL,
 			    league_id INTEGER NOT NULL,
-			    PRIMARY KEY (user_id,league_id)
-			    FOREIGN KEY (user_id) REFERENCES users(id)
+			    PRIMARY KEY (user_id,league_id),
+			    FOREIGN KEY (user_id) REFERENCES users(id),
 			    FOREIGN KEY (league_id) REFERENCES leagues(id)
 			)''')
 			conn.commit()
@@ -370,7 +436,7 @@ class DBHandler:
 			    cash TEXT NOT NULL,
 			    FOREIGN KEY (league_id) REFERENCES leagues(id),
 			    FOREIGN KEY (user_id) REFERENCES users(id),
-			    UNIQUE (league_id)
+			    UNIQUE (league_id,user_id)
 				)
 			''')
 			DBHandler.execute(conn, '''CREATE TABLE IF NOT EXISTS positions (
@@ -397,4 +463,11 @@ class DBHandler:
 			    FOREIGN KEY (acted_by_user_id) REFERENCES users(id)
 				)
 			''')
+			DBHandler.execute(conn, '''CREATE TABLE IF NOT EXISTS league_members (
+			    user_id INTEGER NOT NULL,
+			    league_id INTEGER NOT NULL,
+			    PRIMARY KEY (user_id,league_id),
+			    FOREIGN KEY (user_id) REFERENCES users(id),
+			    FOREIGN KEY (league_id) REFERENCES leagues(id)
+			)''')
 			conn.commit()

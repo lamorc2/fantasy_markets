@@ -4,11 +4,16 @@ from enums import Methods
 
 class APIHandler():
 
-	def makeRequest()
+	def makeRequest():
+		pass
 
 	def POST():
+		pass
 
 	def GET():
+		pass
+
+
 
 class MassiveAPI(APIHandler):
 	@staticmethod
@@ -22,6 +27,7 @@ class MassiveAPI(APIHandler):
 		method = Methods.GET
 	@staticmethod
 	def getSharePrice(ticker: str):
+		pass
 		#TODO: add this
 
 """ 

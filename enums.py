@@ -1,14 +1,15 @@
-from enum import StrEnum
+from enum import Enum
 
-class enum LeagueMode(StrEnum):
-	LeagueMode.H2H = "H2H",
-	LeagueMode.Yearly = "Yearly",
-	LeagueMode.Quarterly = "Quarterly",
 
-class enum Methods(StrEnum):
-	Methods.GET = "GET"
-	Methods.POST = "POST"
+class LeagueMode(str, Enum):
+	H2H = "H2H"
+	Yearly = "Yearly"
+	Quarterly = "Quarterly"
 
-class enum Side(StrEnum):
-	Side.SELL = 'sell'
-	Side.BUY = 'buy'
+class Methods(str, Enum):
+	GET = "GET"
+	POST = "POST"
+
+class Side(str, Enum):
+	SELL = "sell"
+	BUY = "buy"
