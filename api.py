@@ -28,7 +28,7 @@ class MassiveAPI(APIHandler):
 	@staticmethod
 	def getSharePrice(ticker: str):
 		pass
-		#TODO: add this
+		#TODO: add this, raise ticker DNE as ValueError, any API issue as anything else
 
 """ 
 NYSE api needs firm or contract

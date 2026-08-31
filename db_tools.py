@@ -27,9 +27,10 @@ class DBHandler:
 	    if DATABASE_URL:
 	        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 	        cur.execute(sql, params)
-	        return cur.fetchone()
+	        row = cur.fetchone()
 	    else:
-	        return conn.execute(sql, params).fetchone()
+	        row = conn.execute(sql, params).fetchone()
+	    return dict(row) if row is not None else None
 
 	@staticmethod
 	def fetchall(conn, sql, params=()):
@@ -76,6 +77,36 @@ class DBHandler:
 	        return conn.execute(sql, params)
 
 	@staticmethod
+	def _getLeagueIDsByCommissionerID(user_id: int):
+		#for testing should not be used
+		conn = DBHandler.get_db()
+		sql = ''' SELECT id FROM leagues
+		WHERE commissioner_id = ?
+		'''
+		params = (user_id,)
+		out = DBHandler.fetchone(conn,sql,params)
+		return out["id"]
+
+
+	@staticmethod
+	def getLoginUserByUsername(username: str):
+		conn = DBHandler.get_db()
+		sql = '''SELECT * FROM users WHERE username = ?'''
+		params = (username,)
+		return DBHandler.fetchone(conn,sql,params)
+
+	@staticmethod
+	def isFund(fund_id: int) -> bool:
+		conn = DBHandler.get_db()
+		sql =''' SELECT EXISTS (
+		    SELECT 1 
+		    FROM funds
+		    WHERE id = ?
+		) '''
+		params = (fund_id,)
+		return bool(DBHandler.fetchone(conn,sql,params))
+
+	@staticmethod
 	def getPosition(*, fund_id: int, ticker: str) -> int:
 		conn = DBHandler.get_db()
 		sql = ''' SELECT shares FROM positions
@@ -95,7 +126,28 @@ class DBHandler:
 		params = (fund_id,)
 		return DBHandler.fetchone(conn,sql,params)
 
+	@staticmethod
+	def getUserFunds(user_id: int):
+		conn = DBHandler.get_db()
+		sql = ''' SELECT id,name,user_id  FROM funds
+			WHERE user_id = ?
+			'''
+		params = (user_id,)
+		return DBHandler.fetchall(conn,sql,params)
 
+	@staticmethod
+	def getUserLeagueRefs(user_id : int) -> list[dict]:
+		conn = DBHandler.get_db()
+		sql = ''' SELECT league_id  FROM league_members
+			WHERE user_id = ?
+			'''
+		params = (user_id,)
+		rows = DBHandler.fetchall(conn,sql,params)
+		ref_dicts = []
+		for row in rows:
+			ref_dicts.append(DBHandler.getLeagueRef(row["league_id"]))
+		return ref_dicts
+		
 	@staticmethod
 	def getAllUsersByRef():
 		conn = DBHandler.get_db()
@@ -133,6 +185,15 @@ class DBHandler:
 		return DBHandler.fetchone(conn,sql,params)
 
 	@staticmethod
+	def getLeagueRef(league_id:  int):
+		conn = DBHandler.get_db()
+		sql = ''' SELECT id, name FROM leagues
+		WHERE id = ?
+		'''
+		params = (league_id,)
+		return DBHandler.fetchone(conn,sql,params)
+
+	@staticmethod
 	def savePosition(*, fund_id: int, ticker: str, shares: int):
 		conn = DBHandler.get_db()
 		sql = ''' UPDATE positions
@@ -143,6 +204,18 @@ class DBHandler:
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 
+	
+
+	@staticmethod
+	def saveOrAddPosition(*, fund_id: int, ticker: str, new_shares: int):
+		conn = DBHandler.get_db()
+		sql = ''' INSERT INTO positions (fund_id, ticker, shares) VALUES (?,?,?) 
+		ON CONFLICT(fund_id,ticker) DO UPDATE SET shares = excluded.shares
+		'''
+		params = (fund_id, ticker, shares)
+		DBHandler.execute(conn,sql,params)
+		conn.commit()
+
 
 	@staticmethod
 	def addTrade(*, 
@@ -150,8 +223,8 @@ class DBHandler:
 			user_id: int,
 			ticker: str, 
 			side: Side, 
-			shares: str, price: str, 
-			trade_value: str
+			shares: int, price: int, 
+			trade_value: Decimal
 		):
 
 		conn = DBHandler.get_db()
@@ -180,11 +253,16 @@ class DBHandler:
 			period_end: str
 		):
 		conn = DBHandler.get_db()
-		sql = ''' INSERT INTO leagues (name,commissioner_id ,mode,start_money,max_funds, period_start, period_end) VALUES (?,?,?,?,?,?,?)
+		sql = ''' INSERT INTO leagues (name,commissioner_id ,mode,start_money,max_funds, period_start, period_end) VALUES (?,?,?,?,?,?,?) RETURNING id
 		'''
 		params = (name,commissioner_id ,mode,start_money,max_funds, period_start, period_end)
-		DBHandler.execute(conn,sql,params)
+		cur = DBHandler.execute(conn,sql,params)
+		row = cur.fetchone()
 		conn.commit()
+		if row is None:
+			return None
+		return row["id"] if isinstance(row, dict) or hasattr(row, "keys") else row[0]
+
 
 	@staticmethod
 	def addFund(*,
@@ -222,7 +300,17 @@ class DBHandler:
 		return _max > num
 
 
-	
+	@staticmethod
+	def getPortfolio(fund_id: int):
+		conn = DBHandler.get_db()
+		sql = '''SELECT ticker, shares FROM positions
+		WHERE fund_id = ?
+		'''
+		params = (fund_id,)
+		return DBHandler.fetchall(conn,sql,params)
+
+
+
 
 	@staticmethod
 	def getStartCash(league_id:int) -> int:
@@ -318,7 +406,8 @@ class DBHandler:
 			sql = ''' SELECT json_group_array(id) FROM users
 				WHERE is_active = 1
 				'''
-		out = DBHandler.fetchone(conn,sql,params)
+
+		out = DBHandler.fetchone(conn,sql)
 		return out["id"]
 
 	@staticmethod
@@ -330,6 +419,44 @@ class DBHandler:
 			'''
 
 		return DBHandler.fetchall(conn,sql)
+
+	@staticmethod
+	def getUsersLeagues(user_id: int):
+		conn = DBHandler.get_db()
+		sql = ''' SELECT league_id FROM league_members
+		WHERE user_id = ?
+		'''
+		params = (user_id,)
+		return DBHandler.fetchall(conn,sql,params)
+	@staticmethod
+	def getUserByUsername(username: str):
+		conn = DBHandler.get_db()
+		sql = ''' SELECT id, username, display_name, email, is_active FROM users
+		WHERE username = ?
+		'''
+		params = (username,)
+		return DBHandler.fetchone(conn,sql,params)
+
+
+	@staticmethod
+	def getUserIDByUsername(username: str):
+		conn = DBHandler.get_db()
+		sql = ''' SELECT id FROM users
+		WHERE username = ?
+		'''
+		params = (username,)
+		row = DBHandler.fetchone(conn,sql,params)
+		return row["id"]
+
+	@staticmethod
+	def getLeaderboard(league_id: int):
+		conn = DBHandler.get_db()
+		sql = ''' SELECT id, user_id, name, logo_url, cash FROM funds
+		WHERE league_id = ?
+		ORDER BY cash DESC
+		'''
+		params = (league_id,)
+		return DBHandler.fetchall(conn,sql,params)
 
 	@staticmethod
 	def init_db():
@@ -375,7 +502,7 @@ class DBHandler:
 			DBHandler.execute(conn, '''CREATE TABLE IF NOT EXISTS positions (
 			    fund_id INTEGER NOT NULL,
 			    ticker TEXT NOT NULL,
-			    shares TEXT NOT NULL,
+			    shares DECIMAL NOT NULL,
 			    PRIMARY KEY (fund_id, ticker),
 			    FOREIGN KEY (fund_id) REFERENCES funds(id)
 				)
@@ -388,9 +515,9 @@ class DBHandler:
 			    acted_by_user_id INTEGER NOT NULL,
 			    ticker TEXT NOT NULL,
 			    side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
-			    shares TEXT NOT NULL,
-			    price TEXT NOT NULL,
-			    notional TEXT NOT NULL,
+			    shares DECIMAL NOT NULL,
+			    price DECIMAL NOT NULL,
+			    notional DECIMAL NOT NULL,
 			    created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			    FOREIGN KEY (fund_id) REFERENCES funds(id),
 			    FOREIGN KEY (acted_by_user_id) REFERENCES users(id)
@@ -431,7 +558,6 @@ class DBHandler:
 			    user_id INTEGER NOT NULL, 
 			    league_id INTEGER NOT NULL,
 			    name TEXT NOT NULL,
-			    acronym TEXT,
 			    logo_url TEXT,
 			    cash TEXT NOT NULL,
 			    FOREIGN KEY (league_id) REFERENCES leagues(id),
