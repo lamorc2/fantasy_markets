@@ -10,13 +10,13 @@ Depending on the format of your league, each fund manager will get a set number 
 
 - Quarterly/Yearly: For the diehards who want to be able to hold long positions, quarterly/yearly mode will rank your league in net value over a set time period. 
 
-# Features
+# Intended Features
 
-- Online Leagues : need a place to host this. Hosting should be mostly simple DBs, holding usernames, logins, user/league data, with just stocks and number of shares owned. Live pricing can happen client side to pull in live market prices
+- Online Leagues 
 
-- Graphs: Lowkey make claude build the frontend I'm not a fuckin nerd
+- Graphs
 
-- League Customization : Time Period, Format, Starting $$, 
+- League Customization : Time Period, Format, Starting $$
 
 
 ## Project Notes
