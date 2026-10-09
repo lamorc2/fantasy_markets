@@ -127,22 +127,22 @@ class Fund(BaseEntity):
 		return FundReference(self)
 
 	@staticmethod
-	def buyTickerByShares(*, fund_id: int, user_id: int, ticker: str, amnt: Decimal, price: Decimal) -> None:
+	def buyTickerByShares(*, fund_id: int, ticker: str, amnt: Decimal, price: Decimal) -> None:
 		"""
 		Always wrap calls in try/except blocks. Errors will be reasons trade failed
 		amnt = $ in USD to purchase, not number of shares
 		price = per share price at time of trade (price will come from what UI is displaying since it would have already retrieved the price right?)
 		ticker: ticker in all caps.
 		"""
+		from db_tools import DBHandler
 		if len(ticker) > 5 or len(ticker) == 0:
 			raise ValueError(f"Invalid Ticker: {ticker}")
 
 		buy_price = price * amnt
-		user = User.loadUserByID(user_id)
 		user_fund = Fund.loadFundByID(fund_id)
 		if buy_price > user_fund.cash:
 			raise ValueError(f"Insufficient Funds to make trade. Wallet: {str(wallet)} - Trade: {str(buy_price)}")
-
+		DBHandler.buyTicker(fund_id=fund_id, amount=amnt, price=price, ticker=ticker, buy_price=buy_price)
 	@staticmethod
 	def buyTickerByPrice(self, *, ticker: str, amnt: Decimal) -> None:
 		"""
@@ -160,29 +160,20 @@ class Fund(BaseEntity):
 		num_of_shares = amnt / price
 		
 
-
+	@staticmethod
 	def sellTickerByShares(self, *, ticker: str, amnt: int) -> None:
 		"""
 		Always wrap calls in try/except blocks. Errors will be reasons trade failed
 		amnt = number of shares to sell
 		ticker: ticker in all caps.
 		"""
+		from db_tools import DBHandler
 		if len(ticker) > 5 or len(ticker) == 0:
 			raise ValueError(f"Invalid Ticker: {ticker}")
-		try:
-			price = MassiveAPI.getSharePrice(ticker.upper())
-		except Exception as err:
-			raise RuntimeError(f"API Error: {err}")
-		owned_shares = self.portfolio.get(ticker,None)
-		if not owned_shares:
-			raise ValueError(f"No shares owned for {ticker}")
-		if owned_shares < amnt:
-			raise ValueError(f"Insufficient Shares - Owned: {str(owned_shares)}, Selling: {str(amnt)}")
-		sale_amnt = amnt * price
-		self.portfolio[ticker] -= amnt
-		self.wallet += sale_amnt
-		self.save()
 
+		buy_price = price * amnt
+		user_fund = Fund.loadFundByID(fund_id)
+		
 
 	def sellTickerByDollars(self,*,ticker:str,amnt:int) -> None:
 		"""

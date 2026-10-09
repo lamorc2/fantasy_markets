@@ -114,7 +114,12 @@ class DBHandler:
 		'''
 		params = (fund_id,ticker)
 		output = DBHandler.fetchone(conn,sql,params)
-		return output["shares"]
+		if not output:
+			return 0
+		try: 
+			return output["shares"]
+		except: 
+			return 0
 		#return number of shares owned
 
 	@staticmethod
@@ -212,7 +217,7 @@ class DBHandler:
 		sql = ''' INSERT INTO positions (fund_id, ticker, shares) VALUES (?,?,?) 
 		ON CONFLICT(fund_id,ticker) DO UPDATE SET shares = excluded.shares
 		'''
-		params = (fund_id, ticker, shares)
+		params = (fund_id, ticker, new_shares)
 		DBHandler.execute(conn,sql,params)
 		conn.commit()
 
@@ -428,6 +433,40 @@ class DBHandler:
 		'''
 		params = (user_id,)
 		return DBHandler.fetchall(conn,sql,params)
+
+	@staticmethod
+	def buyTicker(*, fund_id, amount, price, ticker,buy_price):
+		owned_shares = DBHandler.getPosition(fund_id=fund_id, ticker=ticker)
+		decimal_owned = Decimal(str(owned_shares))
+		user_fund_dict = DBHandler.getFund(fund_id)
+		print(user_fund_dict)
+		
+		try:
+			user_id = user_fund_dict["user_id"]
+			cash = Decimal(user_fund_dict["cash"])
+		except KeyError as e:
+			raise RuntimeError("Failed to get cash from fund dict")
+		except Exception as e:
+			print(e)
+			raise RuntimeError("Failed to get cash from fund dict")
+		if buy_price > cash:
+			raise ValueError("Error: Insufficient Funds")
+		new_cash = cash - buy_price
+		new_shares = decimal_owned + amount
+		try:
+			DBHandler.updateFundWallet(fund_id=fund_id, new_wallet=new_cash)
+			DBHandler.saveOrAddPosition(fund_id=fund_id, ticker=ticker, new_shares=new_shares)
+			DBHandler.addTrade(fund_id=fund_id, 
+				user_id=user_id,
+				ticker=ticker, 
+				side=Side.BUY, 
+				shares=amount, 
+				price=price, 
+				trade_value=buy_price
+			)
+		except Exception as e:
+			raise RuntimeError(f"Failed to make DB saves. Check Fund state before trying again. err={e}")
+
 	@staticmethod
 	def getUserByUsername(username: str):
 		conn = DBHandler.get_db()

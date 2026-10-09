@@ -1,5 +1,6 @@
 import json
 from enums import Methods
+import os
 #_NYSE_URL = "https://api.developer.nyse.com/client/top/"
 
 class APIHandler():
@@ -12,6 +13,18 @@ class APIHandler():
 
 	def GET():
 		pass
+
+class FinnhubAPI(APIHandler):
+	
+	
+
+	@staticmethod
+	def getSharePrice(ticker: str):
+		import finnhub
+		api_key = os.environ.get("FINNHUB_API_KEY")
+		client = finnhub.Client(api_key=api_key)
+		data = client.quote(ticker.upper())
+		return data
 
 
 

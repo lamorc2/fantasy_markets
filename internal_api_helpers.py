@@ -116,8 +116,69 @@ def getLeaderboard(league_id: int):
 		raise RuntimeError(f"Error: status_code={response.status_code}, err={str(data)}")
 
 
-def getTickerData(ticker: str):
-	pass
+def getTickerData(*, ticker: str, fund_id: int):
+	if len(ticker) > 5:
+		raise ValueError("Error: Ticker Character Length Exceeded")
+	url = API_URL + f"/tickers/api/get/getTickerData"
+	payload = {'ticker':ticker}
+	response = requests.get(url,json=payload)
+
+	if response.status_code != 200:
+		raise RuntimeError(f"Error: Bad Response. status_code={response.status_code}, response={response}")
+	r_json = response.json()
+	try:
+		data = r_json["output"]
+	
+	except KeyError as err:
+		raise RuntimeError(f"Error: No output in return JSON. status_code={response.status_code}, err={err}")
+	except Exception as e:
+		raise RuntimeError(f"Error: Failed to get output data from json, status_code={response.status_code}, err={err}")
+	print("getposition")
+	url = API_URL + f"/funds/api/get/position/"
+	payload = {'fund_id':fund_id,'ticker':ticker}
+	response = requests.get(url, json=payload)
+	if response.status_code != 200:
+		try:
+			out = response.json()
+			raise RuntimeError(f"Error: Bad Response. status_code={response.status_code}, response={response}, message={out['message']}")
+		except Exception as e:
+			raise RuntimeError(f"Error: Bad Response. status_code={response.status_code}, response={response}, err={e}, failed to get JSON/No message")
+
+	r_json = response.json()
+	try:
+		data["owned"] = r_json["output"]
+	except KeyError as err:
+		raise RuntimeError(f"Error: No output in return JSON. status_code={response.status_code}, err={err}")
+	except Exception as e:
+		raise RuntimeError(f"Error: Failed to get output data from json, status_code={response.status_code}, err={err}")
+
+	return data
+
+def buyTicker(*, ticker: str, fund_id: int, amount: int, price: float):
+	if len(ticker) > 5:
+		raise ValueError("Error: Ticker Character Length Exceeded")
+	url = API_URL + f"/tickers/api/post/buyTicker"
+	payload = {'ticker':ticker,'fund_id':fund_id,'shares':amount,'price':price}
+	response = requests.post(url,json=payload)
+
+	if response.status_code != 200:
+		raise RuntimeError("Failed to buy ticker")
+
+	else:
+		return
+
+def sellTicker(*, ticker: str, fund_id: int, amount: int, price: float):
+	if len(ticker) > 5:
+		raise ValueError("Error: Ticker Character Length Exceeded")
+	url = API_URL + f"/tickers/api/post/sellTicker"
+	payload = {'ticker':ticker,'fund_id':fund_id,'shares':amount,'price':price}
+	response = requests.post(url,json=payload)
+
+	if response.status_code != 200:
+		raise RuntimeError("Failed to buy ticker")
+	else:
+		return
+
 
 def getUserFund(*,league_id: int, user_id: int) -> Fund:
 	url = API_URL + "/funds/api/get/user_fund"
@@ -141,7 +202,7 @@ def getUserFund(*,league_id: int, user_id: int) -> Fund:
 		try:
 			msg = json["message"]
 		except Exception as e:
-			raise RuntimeError(f"Error: status_code={code}")
+			raise RuntimeError(f"Error: status_code={code}, err={e}")
 		raise RuntimeError(f"Error: status_code={code}, err={msg}")
 
 	try:
@@ -152,7 +213,7 @@ def getUserFund(*,league_id: int, user_id: int) -> Fund:
 	except KeyError as err:
 		raise RuntimeError(f"Error: Bad Response, JSON missing key. status_code={response.status_code}, err={str(err)} json={str(fund_dict)}")
 	except Exception as e:
-		raise RuntimeError(f"Error: str{e}")
+		raise RuntimeError(f"Error: Could not access dict. str{e}")
 	user_fund = Fund(league_id=league_id,user_id=user_id,fund_name=name,fund_id=fund_id,logo_url=logo_url,cash=cash)
 	return user_fund
 
@@ -172,8 +233,5 @@ def getPortfolio(fund_id: int):
 		raise RuntimeError(f"Err: No output in response JSON status_code={response.status_code}")
 
 	return output #should be a dict right?
-
-
-
 
 

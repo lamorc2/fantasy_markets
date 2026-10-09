@@ -8,7 +8,7 @@ import json
 import os
 from auth_helpers import check_pw, hash_pw
 from functools import wraps
-from api import MassiveAPI
+from api import MassiveAPI, FinnhubAPI
 app = Flask(__name__)
 app.secret_key = os.environ.get('APP_SECRET_KEY') or b'_5#y2L"F4Q8z\n\xec]/'
 CORS(app)
@@ -47,41 +47,54 @@ def get_all_user_refs():
 	refs = DBHandler.getAllUserRefs()
 	return jsonify(refs)
 
-@app.route("/trades/api/<ticker>/buy", methods=['POST'])
+@app.route("/tickers/api/post/buyTicker", methods=['POST'])
 @login_required
-def buy_ticker(ticker):
+def buy_ticker():
 	request_data = request.get_json()
 	if not request_data:
 		return 400
 	fund_id = request_data.get("fund_id",None)
-	user_id = session["user_id"]
-	league_id = request_data.get("league_id",None)
 	shares_float = request_data.get("shares", None)
-	price_float = request_data.get("shares", None)
-	if not user_id or not league_id or not shares_float:
-		return jsonify({'success':False}),400
+	price_float = request_data.get("price", None)
+	ticker = request_data.get("ticker", None)
+	if not shares_float or not price_float or not fund_id:
+		return jsonify({'success':False, 'message':"Error: Request Incomplete"}),400
 	if not DBHandler.isFund(fund_id):
-		#TODO: add error return body
-		return jsonify({'success':False}),404
+		return jsonify({'success':False,'message':"fund_id not recognized"}),404
 
 	shares = Decimal(str(shares_float))
 	price = Decimal(str(price_float))
 	try:
-		Fund.buyTickerByShares(fund_id=fund_id,user_id=user_id,ticker=ticker,amnt=shares,price=price)
-	except Exception:
-		return jsonify({'success':False}), 500
+		Fund.buyTickerByShares(fund_id=fund_id,ticker=ticker,amnt=shares,price=price)
+		return jsonify({'success':True}), 200
+	except Exception as e:
+		print(str(e))
+		return jsonify({'success':False, 'message': str(e)}), 500
 
-@app.route("/tickers/api/get/<ticker>", methods=["GET"])
+
+@app.route("/tickers/api/post/sellTicker", methods=['POST'])
 @login_required
-def get_ticker_price(ticker):
-	try:
-		price = MassiveAPI.getSharePrice(ticker)
-	except ValueError:
-		return jsonify({'success':False, 'message': "Ticker Not Found"}), 404
-	except Exception:
-		return jsonify({'success':False}), 500
-	return jsonify({'success':True,'ticker':ticker,'price':price}), 200
+def sell_ticker():
+	request_data = request.get_json()
+	if not request_data:
+		return 400
+	fund_id = request_data.get("fund_id",None)
+	shares_float = request_data.get("shares", None)
+	price_float = request_data.get("price", None)
+	ticker = request_data.get("ticker", None)
+	if not shares_float or not price_float or not fund_id:
+		return jsonify({'success':False, 'message':"Error: Request Incomplete"}),400
+	if not DBHandler.isFund(fund_id):
+		return jsonify({'success':False,'message':"fund_id not recognized"}),404
 
+	shares = Decimal(str(shares_float))
+	price = Decimal(str(price_float))
+	try:
+		Fund.sellTickerByShares(fund_id=fund_id,ticker=ticker,amnt=shares,price=price)
+		return jsonify({'success':True}), 200
+	except Exception as e:
+		print(str(e))
+		return jsonify({'success':False, 'message': str(e)}), 500
 
 @app.route("/users/api/login", methods=['POST'])
 @app.route("/leagues/api/login", methods=['POST'])
@@ -219,5 +232,48 @@ def get_portfolio():
 		return jsonify({'success':False}), 500
 
 	return jsonify({'success':True,'output':output_rows}), 200
+
+
+@app.route("/tickers/api/get/getTickerData",methods=['GET'])
+@login_required
+def get_ticker_quote():
+	print("GET QUOTE")
+
+	request_data = request.get_json()
+	if not request_data:
+		return jsonify({'success':False, 'message':"Missing Request Data."}), 400
+	ticker = request_data["ticker"]
+	if not ticker:
+		return jsonify({'success':False, 'message':"Missing Request Data. Needs: ticker"}), 400
+	data = FinnhubAPI.getSharePrice(ticker)
+	if not data:
+		return jsonify({'success':False}), 500
+	print("GOT QUOTE")
+	return jsonify({'success':True, 'output':data}), 200
+
+
+@app.route("/funds/api/get/position/",methods=['GET'])
+@login_required
+def get_position():
+	print("GET POSITION")
+	request_data = request.get_json()
+	fund_id = request_data["fund_id"]
+	if not request_data:
+		return jsonify({'success':False, 'message':"Missing Request Data."}), 400
+	try:
+		fund_id = request_data["fund_id"]
+		ticker = request_data["ticker"]
+	except KeyError as e:
+		return jsonify({'success':False, 'message':"Missing Request Data. Needs: fund_id, ticker"}),400
+	if not ticker or not fund_id:
+		return jsonify({'success':False, 'message':"Missing Request Data. Needs: fund_id, ticker"}), 400
+	try:
+		data = DBHandler.getPosition(fund_id=fund_id, ticker=ticker) 
+
+	except Exception as e:
+		return jsonify({'success':False,'message':"DB Error"}), 500
+	if data is None:
+		return jsonify({'success':False,'message':"DB Error, no output"}), 500
+	return jsonify({'success':True, 'output':data}), 200
 
 
